@@ -21,7 +21,7 @@
 # SQLX_OFFLINE=true below tells the build to use that cache instead of
 # trying to reach a database that isn't there.
 
-ARG RUST_VERSION=1.85
+ARG RUST_VERSION=1.86
 
 # ---------------------------------------------------------------------------
 # Stage 1: chef - base image with cargo-chef installed, reused by both the
@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-RUN cargo install cargo-chef
+RUN cargo install --locked cargo-chef
 
 # ---------------------------------------------------------------------------
 # Stage 2: planner - computes cargo-chef's dependency "recipe" from the
