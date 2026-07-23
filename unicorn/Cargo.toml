@@ -35,7 +35,6 @@ ratatui = "0.29"
 crossterm = "0.28"
 sysinfo = "0.39"
 russh = { version = "0.54", features = ["ring"] }
-russh-keys = "0.49"
 
 [profile.release]
 opt-level = 3

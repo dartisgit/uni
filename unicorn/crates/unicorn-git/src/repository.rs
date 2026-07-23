@@ -1,8 +1,8 @@
 //! Opening a single repository and summarizing it for display.
 
-use gix::bstr::ByteSlice;
-
 use std::path::{Path, PathBuf};
+
+use gix::bstr::ByteSlice;
 
 use crate::error::{GitError, Result};
 
@@ -54,6 +54,8 @@ pub fn open(path: impl AsRef<Path>, commit_limit: usize) -> Result<RepositorySum
             // it's used here instead of the higher-level `message()`
             // helper. It includes the trailing newline git stores, hence
             // the `.lines().next()` to get just the summary line.
+            // `to_str()` on the returned `&BStr` requires the `ByteSlice`
+            // trait to be in scope (imported at the top of this file).
             let summary = commit
                 .message_raw()
                 .ok()
@@ -73,8 +75,14 @@ pub fn open(path: impl AsRef<Path>, commit_limit: usize) -> Result<RepositorySum
                 author_name,
             });
 
-            match commit.parent_ids().next() {
-                Some(parent_id) => current_id = parent_id.detach(),
+            // Bind the next parent id before matching on it so `commit`
+            // (which `parent_ids()` borrows from) isn't held across the
+            // point where its backing temporary gets dropped at the end of
+            // this block - avoids a "does not live long enough" borrowck
+            // error on `commit`.
+            let next_parent = commit.parent_ids().next().map(|id| id.detach());
+            match next_parent {
+                Some(parent_id) => current_id = parent_id,
                 None => break,
             }
         }

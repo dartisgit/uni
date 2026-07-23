@@ -11,7 +11,7 @@ pub type Result<T> = std::result::Result<T, UnicornError>;
 #[derive(Debug, Error)]
 pub enum UnicornError {
     #[error("failed to load configuration from {path}: {source}")]
-Config { path: PathBuf, #[source] source: anyhow::Error },
+    Config { path: PathBuf, #[source] source: anyhow::Error },
 
     #[error("repository error: {0}")]
     Repository(String),

@@ -42,11 +42,11 @@ impl UnicornConfig {
         let path = path.as_ref();
         let raw = std::fs::read_to_string(path).map_err(|source| UnicornError::Config {
             path: path.to_path_buf(),
-            source: source.to_string(),
+            source: source.into(),
         })?;
         toml::from_str(&raw).map_err(|source| UnicornError::Config {
             path: path.to_path_buf(),
-            source: source.to_string(),
+            source: source.into(),
         })
     }
 
@@ -67,7 +67,7 @@ impl UnicornConfig {
     pub fn to_toml_string(&self) -> Result<String> {
         toml::to_string_pretty(self).map_err(|source| UnicornError::Config {
             path: PathBuf::from("<in-memory>"),
-            source: source.to_string(),
+            source: source.into(),
         })
     }
 }
