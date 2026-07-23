@@ -1,0 +1,14 @@
+[package]
+name = "unicorn-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "The Ratatui-based terminal dashboard that is Unicorn's primary interface."
+
+[dependencies]
+ratatui.workspace = true
+crossterm.workspace = true
+unicorn-core = { path = "../unicorn-core" }
+unicorn-git = { path = "../unicorn-git" }
+unicorn-metrics = { path = "../unicorn-metrics" }

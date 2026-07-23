@@ -1,0 +1,12 @@
+[package]
+name = "unicorn-git"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "gitoxide-backed repository discovery and inspection for Unicorn."
+
+[dependencies]
+gix.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

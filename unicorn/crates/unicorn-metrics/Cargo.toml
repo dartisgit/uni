@@ -1,0 +1,10 @@
+[package]
+name = "unicorn-metrics"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Live CPU, memory, disk, and network metrics for the Unicorn dashboard."
+
+[dependencies]
+sysinfo.workspace = true

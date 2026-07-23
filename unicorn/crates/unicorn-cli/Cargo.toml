@@ -1,0 +1,19 @@
+[package]
+name = "unicorn-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "The `unicorn` binary: wires config, logging, the SSH server, and the TUI together."
+
+[[bin]]
+name = "unicorn"
+path = "src/main.rs"
+
+[dependencies]
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+unicorn-core = { path = "../unicorn-core" }
+unicorn-ssh = { path = "../unicorn-ssh" }
+unicorn-tui = { path = "../unicorn-tui" }
