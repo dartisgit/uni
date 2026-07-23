@@ -21,7 +21,7 @@
 # SQLX_OFFLINE=true below tells the build to use that cache instead of
 # trying to reach a database that isn't there.
 
-ARG RUST_VERSION=1.86
+ARG RUST_VERSION=1.88
 
 # ---------------------------------------------------------------------------
 # Stage 1: chef - base image with cargo-chef installed, reused by both the
