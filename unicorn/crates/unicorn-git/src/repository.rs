@@ -1,5 +1,7 @@
 //! Opening a single repository and summarizing it for display.
 
+use gix::bstr::ByteSlice;
+
 use std::path::{Path, PathBuf};
 
 use crate::error::{GitError, Result};
