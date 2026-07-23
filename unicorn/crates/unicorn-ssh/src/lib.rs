@@ -1,33 +1,33 @@
 //! Rust-native SSH front door for Unicorn, built on [`russh`] - no
 //! `libssh2`, no system `sshd`.
 //!
-//! # Status: scaffold, not finished
+//! # Status
 //!
-//! This wires up the pieces `russh` needs (a [`russh::server::Config`], a
-//! [`russh::server::Handler`], and a [`russh::server::Server`] factory) and
-//! accepts connections, but authentication currently accepts every public
-//! key and no channel/exec logic is implemented yet. That is intentional:
-//! per Unicorn's own development philosophy ("Generate Workspace -> cargo
-//! check -> improve"), this module is meant to be filled in incrementally -
-//! wire real public-key lookup against `unicorn_core::models::SshKey`
-//! first, then `git-upload-pack` / `git-receive-pack` channel handling.
+//! Connection handling and public-key authentication are real: incoming
+//! keys are fingerprinted (SHA-256, the same format `ssh-keygen -l`
+//! prints) and checked against a [`KeyStore`], and unknown/mismatched keys
+//! are rejected. What's still scaffold is channel/exec handling - no
+//! `git-upload-pack` / `git-receive-pack` dispatch yet, so authenticated
+//! sessions currently just echo bytes back (see [`ConnectionHandler::data`]).
 //!
 //! # A note on key types
 //!
 //! `russh` re-exports its own internal fork of key-handling types under
 //! `russh::keys` (`russh::keys::PrivateKey`, `russh::keys::PublicKey`,
-//! `russh::keys::Algorithm`). Do NOT add the standalone `russh-keys` crate
-//! as a separate dependency here - it defines structurally identical but
-//! *distinct* types with the same names, and mixing the two produces
-//! confusing "expected `russh::keys::X`, found `russh_keys::X`" errors
-//! that look like a version mismatch but are actually a duplicate-crate
-//! problem. Always import from `russh::keys::`, never from a top-level
-//! `russh_keys::`.
+//! `russh::keys::Algorithm`, `russh::keys::HashAlg`). Do NOT add the
+//! standalone `russh-keys` crate as a separate dependency here - it defines
+//! structurally identical but *distinct* types with the same names, and
+//! mixing the two produces confusing "expected `russh::keys::X`, found
+//! `russh_keys::X`" errors that look like a version mismatch but are
+//! actually a duplicate-crate problem. Always import from `russh::keys::`,
+//! never from a top-level `russh_keys::`.
 //!
-//! If `cargo check -p unicorn-ssh` fails, this file - specifically the
-//! `Config` construction in [`run`] and the `auth_publickey` signature
-//! below - is the first place to look; compare against whatever `russh`
-//! version Cargo actually resolved (`cargo tree -p russh`).
+//! If `cargo check -p unicorn-ssh` fails, compare against whatever `russh`
+//! version Cargo actually resolved (`cargo tree -p russh`) - this crate's
+//! `auth.rs` in particular calls `PublicKey::fingerprint`, which has moved
+//! around across `russh`/`ssh-key` releases historically.
+
+mod auth;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -35,6 +35,8 @@ use std::sync::Arc;
 use russh::server::{Auth, Handler, Msg, Server as _, Session};
 use russh::{Channel, ChannelId};
 use thiserror::Error;
+
+pub use auth::{AuthorizedKey, InMemoryKeyStore, KeyStore, KeyStoreError};
 
 pub type Result<T> = std::result::Result<T, SshError>;
 
@@ -52,6 +54,11 @@ pub enum SshError {
 /// dependency on `unicorn-core`'s exact shape.
 pub struct SshServerOptions {
     pub bind_addr: SocketAddr,
+    /// Source of truth for which public keys are allowed to authenticate.
+    /// `unicorn-cli` is responsible for populating this from
+    /// `unicorn_core::models::SshKey` records (or, eventually, a real
+    /// database) before calling [`run`].
+    pub key_store: Arc<dyn KeyStore>,
 }
 
 /// Start the SSH server and run until the process is shut down.
@@ -71,38 +78,43 @@ pub async fn run(options: SshServerOptions) -> Result<()> {
 
     tracing::info!(addr = %options.bind_addr, "starting Unicorn SSH server");
 
-    let mut factory = ServerFactory;
+    let mut factory = ServerFactory { key_store: options.key_store };
     factory
         .run_on_address(config, options.bind_addr)
         .await
         .map_err(|e| SshError::Server(e.into()))
 }
 
-/// Creates a fresh [`Handler`] for every incoming TCP connection.
-struct ServerFactory;
+/// Creates a fresh [`Handler`] for every incoming TCP connection. Holds the
+/// shared [`KeyStore`] so every connection's handler can look keys up
+/// against the same source of truth.
+struct ServerFactory {
+    key_store: Arc<dyn KeyStore>,
+}
 
 impl russh::server::Server for ServerFactory {
     type Handler = ConnectionHandler;
 
     fn new_client(&mut self, peer_addr: Option<SocketAddr>) -> Self::Handler {
         tracing::debug!(?peer_addr, "accepted ssh connection");
-        ConnectionHandler::default()
+        ConnectionHandler { username: None, key_store: self.key_store.clone() }
     }
 }
 
 /// Per-connection handler. One instance is created per client.
-#[derive(Default)]
 struct ConnectionHandler {
     username: Option<String>,
+    key_store: Arc<dyn KeyStore>,
 }
 
 impl Handler for ConnectionHandler {
     type Error = russh::Error;
 
-    /// TODO(security): replace with a real lookup against
-    /// `unicorn_core::models::SshKey` by fingerprint before this server is
-    /// exposed to anything but a trusted local network. Accepting every
-    /// key, as this scaffold does, is only appropriate for local testing.
+    /// Authenticates the client's offered public key by fingerprinting it
+    /// (SHA-256, matching `ssh-keygen -l`'s default output) and checking
+    /// that fingerprint against [`KeyStore`]. Any lookup error, or simply
+    /// not finding the key, rejects the connection - this fails closed by
+    /// design, never open.
     ///
     /// Note the explicit `std::result::Result<_, Self::Error>` return type
     /// below (rather than this crate's own `Result<T>` alias): the trait
@@ -114,10 +126,32 @@ impl Handler for ConnectionHandler {
     async fn auth_publickey(
         &mut self,
         user: &str,
-        _public_key: &russh::keys::PublicKey,
+        public_key: &russh::keys::PublicKey,
     ) -> std::result::Result<Auth, Self::Error> {
-        self.username = Some(user.to_string());
-        Ok(Auth::Accept)
+        let fingerprint = auth::fingerprint_of(public_key);
+
+        match self.key_store.find_key(&fingerprint).await {
+            Ok(Some(authorized)) => {
+                tracing::info!(
+                    user,
+                    fingerprint = %fingerprint,
+                    owner = %authorized.owner_username,
+                    "public key accepted"
+                );
+                self.username = Some(user.to_string());
+                Ok(Auth::Accept)
+            }
+            Ok(None) => {
+                tracing::warn!(user, fingerprint = %fingerprint, "public key rejected: not found in key store");
+                Ok(Auth::reject())
+            }
+            Err(err) => {
+                // Fail closed: a broken lookup is treated the same as "key
+                // not found", never as an implicit accept.
+                tracing::error!(user, fingerprint = %fingerprint, error = %err, "key store lookup failed, rejecting");
+                Ok(Auth::reject())
+            }
+        }
     }
 
     async fn channel_open_session(

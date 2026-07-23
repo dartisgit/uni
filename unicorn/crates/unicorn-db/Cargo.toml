@@ -1,0 +1,18 @@
+[package]
+name = "unicorn-db"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Postgres persistence for Unicorn: connection pool, migrations, and repository-pattern queries over unicorn-core's domain models."
+
+[dependencies]
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "chrono", "uuid"] }
+tokio.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
+unicorn-core = { path = "../unicorn-core" }
+unicorn-ssh = { path = "../unicorn-ssh" }

@@ -25,7 +25,8 @@ generator script, not by hand-editing the files it owns.
 | Repository discovery & inspection | `unicorn-git` | ✅ working — built on `gix` (gitoxide), no `libgit2` |
 | Live system metrics | `unicorn-metrics` | ✅ working — built on `sysinfo` |
 | Configuration & domain models | `unicorn-core` | ✅ working — Serde + TOML |
-| SSH front door | `unicorn-ssh` | 🚧 scaffold — accepts connections; does not yet serve `git-upload-pack` / `git-receive-pack` |
+| SSH front door & public-key auth | `unicorn-ssh` | 🚧 partial — real fingerprint-based auth against a pluggable `KeyStore`; connections accepted, but no `git-upload-pack` / `git-receive-pack` channel handling yet |
+| Postgres persistence | `unicorn-db` | 🚧 partial — connection pool, migrations, and a `KeyStore` backing SSH auth exist; most of `unicorn-core::models` has no queries yet |
 | Everything else in the long-term vision (webhooks, CI, package registry, REST API, plugins, admin UI) | — | 📋 not started, see `docs/ARCHITECTURE.md` |
 
 ## Quickstart
@@ -47,7 +48,8 @@ crates/
   unicorn-core     shared config, domain models, error types, logging bootstrap
   unicorn-git      gitoxide-backed repository discovery & inspection
   unicorn-metrics  sysinfo-backed CPU / memory / disk / network snapshots
-  unicorn-ssh      russh-backed SSH server (scaffold, see module docs)
+  unicorn-ssh      russh-backed SSH server with real public-key auth
+  unicorn-db       Postgres persistence: pool, migrations, KeyStore backend
   unicorn-tui      the Ratatui dashboard - the primary interface
   unicorn-cli      the `unicorn` binary that wires it all together
 ```
@@ -59,3 +61,22 @@ the rest of this dependency graph, so that crate is the one place in this
 scaffold written defensively, with inline `TODO` / verification comments
 rather than treated as finished. Run `cargo check -p unicorn-ssh` first if
 you hit build errors after generating.
+
+Public-key authentication is real: incoming keys are fingerprinted
+(SHA-256, same format as `ssh-keygen -l`) and checked against a
+[`KeyStore`], which `unicorn-cli` backs with Postgres via `unicorn-db`
+when `DATABASE_URL` is set, or an empty in-memory store otherwise (so no
+key authenticates until one is added to the database).
+
+## A note on `unicorn-db`
+
+`sqlx`'s query macros check SQL against a real database schema at
+**compile time**. That means this crate will not build without either a
+live Postgres reachable via `DATABASE_URL`, or a checked-in `.sqlx/`
+offline query cache (`cargo sqlx prepare --workspace`, needs
+`cargo install sqlx-cli` first). See `crates/unicorn-db/src/ssh_keys.rs`
+for the exact steps.
+
+Postgres does not run natively inside Termux - point `DATABASE_URL` at a
+Postgres reachable over the network (a VPS, a Docker host, etc.) rather
+than trying to run it on-device.

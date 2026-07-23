@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "The `unicorn` binary: wires config, logging, the SSH server, and the TUI together."
+description = "The `unicorn` binary: wires config, logging, the database, the SSH server, and the TUI together."
 
 [[bin]]
 name = "unicorn"
@@ -16,4 +16,5 @@ tracing.workspace = true
 anyhow.workspace = true
 unicorn-core = { path = "../unicorn-core" }
 unicorn-ssh = { path = "../unicorn-ssh" }
+unicorn-db = { path = "../unicorn-db" }
 unicorn-tui = { path = "../unicorn-tui" }

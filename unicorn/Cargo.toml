@@ -5,6 +5,7 @@ members = [
     "crates/unicorn-git",
     "crates/unicorn-metrics",
     "crates/unicorn-ssh",
+    "crates/unicorn-db",
     "crates/unicorn-tui",
     "crates/unicorn-cli",
 ]
@@ -35,6 +36,9 @@ ratatui = "0.29"
 crossterm = "0.28"
 sysinfo = "0.39"
 russh = { version = "0.54", features = ["ring"] }
+sqlx = { version = "0.9", default-features = false }
+uuid = { version = "1", features = ["v4", "serde"] }
+async-trait = "0.1"
 
 [profile.release]
 opt-level = 3
